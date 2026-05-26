@@ -8,7 +8,7 @@ import time
 from urllib.parse import quote_plus
 
 st.set_page_config(
-    page_title="Metabolite Annotation v4 - No Blank Outputs",
+    page_title="Metabolite Annotation v5 - Genes & Proteins",
     page_icon="🧬",
     layout="wide"
 )
@@ -17,12 +17,13 @@ PUBCHEM_BASE = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 KEGG_BASE = "https://rest.kegg.jp"
 NCBI_EUTILS = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 OLS_BASE = "https://www.ebi.ac.uk/ols/api"
+UNIPROT_BASE = "https://rest.uniprot.org/uniprotkb/search"
 
-HEADERS = {"User-Agent": "MetaboliteAnnotationNoBlankV4/1.0"}
+HEADERS = {"User-Agent": "MetaboliteAnnotationGeneProteinV5/1.0"}
 
-# -----------------------------
-# Basic helpers
-# -----------------------------
+# ============================================================
+# General helpers
+# ============================================================
 def safe_get(url, params=None, timeout=30):
     try:
         r = requests.get(url, params=params, headers=HEADERS, timeout=timeout)
@@ -51,22 +52,25 @@ def split_metabolites(text):
     items = re.split(r"[\n,;]+", text)
     return list(dict.fromkeys([x.strip() for x in items if x.strip()]))
 
+def no_blank_dict(row):
+    for k in list(row.keys()):
+        if is_blank(row[k]):
+            row[k] = "Not available"
+    return row
+
 def name_variants(name):
     n = clean(name)
     variants = []
-
     def add(x):
         x = clean(x)
         if x and x not in variants:
             variants.append(x)
-
     add(n)
     add(n.replace("_", " "))
     add(n.replace("-", " "))
     add(re.sub(r"\s+", " ", n))
     add(n.replace("(", "").replace(")", ""))
     add(n.replace("[", "").replace("]", ""))
-
     low = n.lower()
     if not low.startswith("l-"):
         add("L-" + n)
@@ -75,16 +79,12 @@ def name_variants(name):
         add(n[2:])
     if low.startswith("l "):
         add(n[2:])
-
     add(n.replace("α", "alpha").replace("β", "beta").replace("γ", "gamma"))
     add(n.replace("alpha", "α").replace("beta", "β").replace("gamma", "γ"))
-
-    # Remove common LC-MS annotations
     cleaned = re.sub(r"\bpos\b|\bneg\b|\bpositive\b|\bnegative\b", "", n, flags=re.I)
     cleaned = re.sub(r"\[.*?\]", "", cleaned)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     add(cleaned)
-
     return variants
 
 def parse_kegg(text):
@@ -102,9 +102,9 @@ def parse_kegg(text):
             result[current] += " " + val
     return result
 
-# -----------------------------
+# ============================================================
 # Local curated database
-# -----------------------------
+# ============================================================
 @st.cache_data(show_spinner=False)
 def load_local_db(uploaded_file=None):
     if uploaded_file is not None:
@@ -122,7 +122,9 @@ def load_local_db(uploaded_file=None):
                 "kegg_id": "C00097",
                 "pubchem_cid": "5862",
                 "inchikey": "XUJNEKJLAYXESH-REOHCLBHSA-N",
-                "notes": "Sulfur amino acid involved in glutathione synthesis and redox balance."
+                "notes": "Sulfur amino acid involved in glutathione synthesis and redox balance.",
+                "associated_genes": "CBS; CTH; GCLC; GCLM; GSS; SLC7A11; GGT1",
+                "associated_proteins": "Cystathionine beta-synthase; Cystathionine gamma-lyase; Glutamate-cysteine ligase catalytic subunit; Glutamate-cysteine ligase modifier subunit; Glutathione synthetase; Cystine/glutamate transporter; Gamma-glutamyltransferase 1"
             },
             {
                 "metabolite": "L-Arginine",
@@ -135,7 +137,9 @@ def load_local_db(uploaded_file=None):
                 "kegg_id": "C00062",
                 "pubchem_cid": "6322",
                 "inchikey": "ODKSFYDXXFIFQN-BYPYZUCNSA-N",
-                "notes": "Substrate for nitric oxide synthase and arginase."
+                "notes": "Substrate for nitric oxide synthase and arginase.",
+                "associated_genes": "NOS3; NOS2; NOS1; ARG1; ARG2; ASS1; ASL; SLC7A1",
+                "associated_proteins": "Endothelial nitric oxide synthase; Inducible nitric oxide synthase; Neuronal nitric oxide synthase; Arginase-1; Arginase-2; Argininosuccinate synthase; Argininosuccinate lyase; Cationic amino acid transporter 1"
             },
             {
                 "metabolite": "L-Carnitine",
@@ -148,7 +152,9 @@ def load_local_db(uploaded_file=None):
                 "kegg_id": "C00318",
                 "pubchem_cid": "10917",
                 "inchikey": "PHIQHXFUZVPYII-ZCFIWIBFSA-N",
-                "notes": "Transports long-chain fatty acids into mitochondria."
+                "notes": "Transports long-chain fatty acids into mitochondria.",
+                "associated_genes": "CPT1A; CPT1B; CPT2; SLC22A5; CACT/SLC25A20; CRAT",
+                "associated_proteins": "Carnitine palmitoyltransferase 1A; Carnitine palmitoyltransferase 1B; Carnitine palmitoyltransferase 2; Organic cation/carnitine transporter 2; Carnitine/acylcarnitine translocase; Carnitine O-acetyltransferase"
             },
             {
                 "metabolite": "Tryptophan",
@@ -161,7 +167,9 @@ def load_local_db(uploaded_file=None):
                 "kegg_id": "C00078",
                 "pubchem_cid": "6305",
                 "inchikey": "QIVBCDIJIAJPQS-VIFPVBQESA-N",
-                "notes": "Precursor of kynurenine, serotonin, melatonin and microbial indoles."
+                "notes": "Precursor of kynurenine, serotonin, melatonin and microbial indoles.",
+                "associated_genes": "IDO1; IDO2; TDO2; TPH1; TPH2; KYNU; KMO; AANAT",
+                "associated_proteins": "Indoleamine 2,3-dioxygenase 1; Indoleamine 2,3-dioxygenase 2; Tryptophan 2,3-dioxygenase; Tryptophan hydroxylase 1; Tryptophan hydroxylase 2; Kynureninase; Kynurenine 3-monooxygenase; Serotonin N-acetyltransferase"
             },
             {
                 "metabolite": "Choline",
@@ -174,14 +182,16 @@ def load_local_db(uploaded_file=None):
                 "kegg_id": "C00114",
                 "pubchem_cid": "305",
                 "inchikey": "OEYIOHPDSNJKLS-UHFFFAOYSA-N",
-                "notes": "Important for membrane phospholipids and methylation biology."
+                "notes": "Important for membrane phospholipids and methylation biology.",
+                "associated_genes": "CHKA; CHKB; PCYT1A; PEMT; BHMT; SLC44A1",
+                "associated_proteins": "Choline kinase alpha; Choline kinase beta; Choline-phosphate cytidylyltransferase A; Phosphatidylethanolamine N-methyltransferase; Betaine-homocysteine S-methyltransferase; Choline transporter-like protein 1"
             }
         ])
 
     required = [
         "metabolite", "synonyms", "compound_class", "pathway", "superpathway",
         "physiological_compartment", "hmdb_id", "kegg_id", "pubchem_cid",
-        "inchikey", "notes"
+        "inchikey", "notes", "associated_genes", "associated_proteins"
     ]
     for c in required:
         if c not in df.columns:
@@ -206,9 +216,9 @@ def find_local(name, db):
 
     return {}, "No local match"
 
-# -----------------------------
-# Online databases
-# -----------------------------
+# ============================================================
+# Online annotation databases
+# ============================================================
 @st.cache_data(show_spinner=False, ttl=86400)
 def pubchem_lookup(name):
     errors = []
@@ -439,9 +449,9 @@ def classyfire_lookup(inchikey):
         "classyfire_error": last_err
     }
 
-# -----------------------------
-# Rule-based fallback
-# -----------------------------
+# ============================================================
+# Fallback biological annotation
+# ============================================================
 def infer_fallback(name, pathway="", class_text="", synonyms="", formula=""):
     text = " ".join([name, pathway, class_text, synonyms, formula]).lower()
 
@@ -526,8 +536,7 @@ def infer_fallback(name, pathway="", class_text="", synonyms="", formula=""):
 
     return cls, path, superpath, compartment, confidence
 
-def no_blank_row(row):
-    # first replace raw blanks
+def no_blank_annotation_row(row):
     for k in list(row.keys()):
         if is_blank(row[k]):
             row[k] = "Not available"
@@ -554,11 +563,11 @@ def no_blank_row(row):
     row["compartment_source"] = "Local curated table" if row.get("physiological_compartment_local") != "Not available" else "Rule-based closest organ/compartment inference"
     row["fallback_confidence"] = conf
 
-    for k in list(row.keys()):
-        if is_blank(row[k]):
-            row[k] = "Not available"
-    return row
+    return no_blank_dict(row)
 
+# ============================================================
+# Annotation integration
+# ============================================================
 def annotate_one(name, db, use_pubchem=True, use_kegg=True, use_chebi=True, use_classyfire=True):
     local, local_status = find_local(name, db)
     pub = pubchem_lookup(name) if use_pubchem else {"pubchem_status": "not used"}
@@ -580,6 +589,8 @@ def annotate_one(name, db, use_pubchem=True, use_kegg=True, use_chebi=True, use_
         "local_kegg_id": local.get("kegg_id", ""),
         "local_pubchem_cid": local.get("pubchem_cid", ""),
         "local_notes": local.get("notes", ""),
+        "local_associated_genes": local.get("associated_genes", ""),
+        "local_associated_proteins": local.get("associated_proteins", ""),
 
         "pubchem_status": pub.get("pubchem_status", ""),
         "pubchem_lookup_name": pub.get("pubchem_lookup_name", ""),
@@ -621,11 +632,315 @@ def annotate_one(name, db, use_pubchem=True, use_kegg=True, use_chebi=True, use_
         "classyfire_direct_parent": classy.get("classyfire_direct_parent", ""),
         "classyfire_error": classy.get("classyfire_error", "")
     }
-    return no_blank_row(row)
+    return no_blank_annotation_row(row)
 
-# -----------------------------
+# ============================================================
+# Gene/protein association logic
+# ============================================================
+def split_semicolon(x):
+    if is_blank(x):
+        return []
+    return [i.strip() for i in re.split(r"[;,|]+", str(x)) if i.strip() and i.strip() != "Not available"]
+
+def fallback_genes_for_metabolite(name, annotation_row=None):
+    text = name.lower()
+    if annotation_row:
+        text += " " + str(annotation_row.get("best_pathway", "")).lower()
+        text += " " + str(annotation_row.get("best_compound_class", "")).lower()
+
+    gene_map = []
+
+    def add(gene, protein, function, pathway, source="Rule-based curated fallback", confidence="Moderate"):
+        gene_map.append({
+            "gene_name": gene,
+            "protein_name": protein,
+            "protein_details": function,
+            "associated_pathway_or_process": pathway,
+            "association_source": source,
+            "association_confidence": confidence
+        })
+
+    if "cysteine" in text or "glutathione" in text or "sulfur" in text:
+        add("CBS", "Cystathionine beta-synthase", "Catalyzes conversion reactions in transsulfuration and cysteine-related sulfur amino acid metabolism.", "Cysteine and methionine metabolism; transsulfuration")
+        add("CTH", "Cystathionine gamma-lyase", "Generates cysteine and hydrogen sulfide-related sulfur metabolites.", "Cysteine and methionine metabolism")
+        add("GCLC", "Glutamate-cysteine ligase catalytic subunit", "Rate-limiting enzyme for glutathione synthesis using cysteine as a substrate.", "Glutathione metabolism; redox regulation")
+        add("GCLM", "Glutamate-cysteine ligase modifier subunit", "Regulatory subunit of glutamate-cysteine ligase involved in glutathione biosynthesis.", "Glutathione metabolism; redox regulation")
+        add("GSS", "Glutathione synthetase", "Catalyzes final step in glutathione biosynthesis.", "Glutathione metabolism")
+        add("SLC7A11", "Cystine/glutamate transporter", "Imports cystine for intracellular cysteine and glutathione production.", "Amino acid transport; redox homeostasis")
+        add("GGT1", "Gamma-glutamyltransferase 1", "Participates in extracellular glutathione breakdown and cysteine recycling.", "Glutathione turnover")
+
+    elif "arginine" in text or "nitric oxide" in text or "urea cycle" in text:
+        add("NOS3", "Endothelial nitric oxide synthase", "Converts arginine to nitric oxide in vascular/endothelial biology.", "Nitric oxide biosynthesis")
+        add("NOS2", "Inducible nitric oxide synthase", "Produces nitric oxide during inflammatory and immune responses.", "Nitric oxide biosynthesis; inflammation")
+        add("ARG1", "Arginase-1", "Converts arginine to ornithine and urea, competing with nitric oxide synthases.", "Urea cycle; arginine metabolism")
+        add("ARG2", "Arginase-2", "Mitochondrial arginase involved in arginine and ornithine metabolism.", "Arginine metabolism")
+        add("ASS1", "Argininosuccinate synthase", "Catalyzes citrulline-to-argininosuccinate step in arginine biosynthesis/urea cycle.", "Urea cycle")
+        add("ASL", "Argininosuccinate lyase", "Generates arginine and fumarate from argininosuccinate.", "Urea cycle")
+        add("SLC7A1", "Cationic amino acid transporter 1", "Transports arginine and related cationic amino acids.", "Amino acid transport")
+
+    elif "carnitine" in text or "fatty acid oxidation" in text:
+        add("CPT1A", "Carnitine palmitoyltransferase 1A", "Controls entry of long-chain fatty acids into mitochondrial beta-oxidation.", "Carnitine shuttle; fatty acid oxidation")
+        add("CPT1B", "Carnitine palmitoyltransferase 1B", "Muscle-enriched carnitine palmitoyltransferase involved in fatty acid oxidation.", "Carnitine shuttle")
+        add("CPT2", "Carnitine palmitoyltransferase 2", "Converts acylcarnitines back to acyl-CoA inside mitochondria.", "Mitochondrial beta-oxidation")
+        add("SLC22A5", "Organic cation/carnitine transporter 2", "High-affinity carnitine transporter important for systemic carnitine homeostasis.", "Carnitine transport")
+        add("SLC25A20", "Carnitine/acylcarnitine translocase", "Transports acylcarnitines across the mitochondrial inner membrane.", "Mitochondrial carnitine shuttle")
+        add("CRAT", "Carnitine O-acetyltransferase", "Catalyzes reversible transfer of acetyl groups between acetyl-CoA and carnitine.", "Acetylcarnitine metabolism")
+
+    elif "tryptophan" in text or "kynurenine" in text or "serotonin" in text:
+        add("IDO1", "Indoleamine 2,3-dioxygenase 1", "Initiates tryptophan catabolism through the kynurenine pathway during immune activation.", "Kynurenine pathway")
+        add("IDO2", "Indoleamine 2,3-dioxygenase 2", "Tryptophan-catabolizing enzyme related to immune-metabolic regulation.", "Kynurenine pathway")
+        add("TDO2", "Tryptophan 2,3-dioxygenase", "Liver-enriched enzyme initiating tryptophan degradation to kynurenine.", "Kynurenine pathway")
+        add("TPH1", "Tryptophan hydroxylase 1", "Rate-limiting enzyme for peripheral serotonin synthesis.", "Serotonin biosynthesis")
+        add("TPH2", "Tryptophan hydroxylase 2", "Neuronal tryptophan hydroxylase involved in serotonin production.", "Serotonin biosynthesis")
+        add("KMO", "Kynurenine 3-monooxygenase", "Controls branch-point metabolism in the kynurenine pathway.", "Kynurenine pathway")
+
+    elif "choline" in text or "phosphatidylcholine" in text:
+        add("CHKA", "Choline kinase alpha", "Phosphorylates choline in phosphatidylcholine biosynthesis.", "Kennedy pathway; phosphatidylcholine metabolism")
+        add("CHKB", "Choline kinase beta", "Choline kinase involved in membrane phospholipid biosynthesis.", "Phosphatidylcholine metabolism")
+        add("PCYT1A", "Choline-phosphate cytidylyltransferase A", "Rate-limiting enzyme in phosphatidylcholine synthesis.", "Kennedy pathway")
+        add("PEMT", "Phosphatidylethanolamine N-methyltransferase", "Converts phosphatidylethanolamine to phosphatidylcholine in liver.", "Phospholipid methylation")
+        add("BHMT", "Betaine-homocysteine S-methyltransferase", "Links choline-derived betaine to one-carbon metabolism.", "One-carbon metabolism")
+        add("SLC44A1", "Choline transporter-like protein 1", "Transports choline for phospholipid and methyl donor metabolism.", "Choline transport")
+
+    elif "glucose" in text or "glycolysis" in text:
+        add("HK1", "Hexokinase-1", "Phosphorylates glucose to glucose-6-phosphate.", "Glycolysis")
+        add("GCK", "Glucokinase", "Liver/pancreatic glucose sensor enzyme.", "Glucose metabolism")
+        add("SLC2A1", "Glucose transporter 1", "Facilitates cellular glucose uptake.", "Glucose transport")
+        add("SLC2A4", "Glucose transporter 4", "Insulin-responsive glucose transporter.", "Glucose transport")
+        add("G6PD", "Glucose-6-phosphate dehydrogenase", "Controls entry into pentose phosphate pathway and NADPH generation.", "Pentose phosphate pathway")
+
+    elif "lactate" in text:
+        add("LDHA", "L-lactate dehydrogenase A chain", "Converts pyruvate to lactate under glycolytic conditions.", "Lactate metabolism")
+        add("LDHB", "L-lactate dehydrogenase B chain", "Catalyzes lactate-pyruvate interconversion.", "Lactate metabolism")
+        add("SLC16A1", "Monocarboxylate transporter 1", "Transports lactate and other monocarboxylates.", "Lactate transport")
+        add("SLC16A3", "Monocarboxylate transporter 4", "Exports lactate from glycolytic cells.", "Lactate transport")
+
+    elif "bile acid" in text or "cholate" in text:
+        add("CYP7A1", "Cholesterol 7-alpha-monooxygenase", "Rate-limiting enzyme in bile acid synthesis.", "Bile acid biosynthesis")
+        add("CYP8B1", "Sterol 12-alpha-hydroxylase", "Controls cholic acid synthesis branch.", "Bile acid biosynthesis")
+        add("SLC10A1", "Sodium/bile acid cotransporter", "Hepatic bile acid uptake transporter.", "Bile acid transport")
+        add("ABCB11", "Bile salt export pump", "Exports bile acids from hepatocytes into bile.", "Bile acid transport")
+
+    elif "steroid" in text or "cholesterol" in text or "progesterone" in text or "estradiol" in text:
+        add("CYP11A1", "Cholesterol side-chain cleavage enzyme", "Converts cholesterol to pregnenolone.", "Steroidogenesis")
+        add("HSD3B1", "3 beta-hydroxysteroid dehydrogenase type 1", "Catalyzes steroid hormone biosynthesis steps.", "Steroid hormone metabolism")
+        add("CYP19A1", "Aromatase", "Converts androgens to estrogens.", "Estrogen biosynthesis")
+        add("STAR", "Steroidogenic acute regulatory protein", "Moves cholesterol into mitochondria for steroidogenesis.", "Steroidogenesis")
+
+    else:
+        add("Not specifically identified", "Not specifically identified", "No confident metabolite-specific gene/protein association was found. Treat as likely exogenous, xenobiotic, microbial, or unclassified until manually curated.", "Unclassified/exogenous metabolism", "Fallback classification", "Low")
+
+    return gene_map
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def uniprot_by_ec(ec_number, max_results=5):
+    if is_blank(ec_number):
+        return []
+    query = f'(ec:{ec_number}) AND (organism_id:9606)'
+    params = {
+        "query": query,
+        "format": "json",
+        "size": max_results,
+        "fields": "accession,id,protein_name,gene_names,organism_name,cc_function,ec"
+    }
+    r, err = safe_get(UNIPROT_BASE, params=params, timeout=40)
+    if r is None:
+        return []
+    try:
+        data = r.json()
+        results = data.get("results", [])
+    except Exception:
+        return []
+
+    rows = []
+    for item in results:
+        accession = item.get("primaryAccession", "")
+        protein_desc = item.get("proteinDescription", {})
+        protein_name = ""
+        try:
+            protein_name = protein_desc.get("recommendedName", {}).get("fullName", {}).get("value", "")
+        except Exception:
+            protein_name = ""
+
+        genes = []
+        for g in item.get("genes", []) or []:
+            if isinstance(g, dict):
+                gn = g.get("geneName", {}).get("value", "")
+                if gn:
+                    genes.append(gn)
+
+        comments = item.get("comments", []) or []
+        functions = []
+        for c in comments:
+            if c.get("commentType") == "FUNCTION":
+                for t in c.get("texts", []) or []:
+                    val = t.get("value", "")
+                    if val:
+                        functions.append(val)
+
+        rows.append({
+            "gene_name": "; ".join(genes) or "Not available",
+            "protein_name": protein_name or "Not available",
+            "uniprot_id": accession or "Not available",
+            "ec_number": ec_number,
+            "protein_details": " ".join(functions)[:1200] if functions else "Function details not available from UniProt record",
+            "associated_pathway_or_process": f"EC-linked enzyme activity from KEGG compound enzyme field: {ec_number}",
+            "association_source": "KEGG enzyme field → UniProt human protein lookup",
+            "association_confidence": "High if EC mapping is correct for the metabolite pathway"
+        })
+    return rows
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def uniprot_by_gene(gene_name):
+    if is_blank(gene_name) or gene_name == "Not specifically identified":
+        return None
+    query = f'(gene_exact:{gene_name}) AND (organism_id:9606)'
+    params = {
+        "query": query,
+        "format": "json",
+        "size": 1,
+        "fields": "accession,id,protein_name,gene_names,organism_name,cc_function,ec"
+    }
+    r, err = safe_get(UNIPROT_BASE, params=params, timeout=30)
+    if r is None:
+        return None
+    try:
+        results = r.json().get("results", [])
+        if not results:
+            return None
+        item = results[0]
+    except Exception:
+        return None
+
+    accession = item.get("primaryAccession", "")
+    protein_name = ""
+    try:
+        protein_name = item.get("proteinDescription", {}).get("recommendedName", {}).get("fullName", {}).get("value", "")
+    except Exception:
+        protein_name = ""
+
+    ec_numbers = []
+    try:
+        rec = item.get("proteinDescription", {}).get("recommendedName", {})
+        for ec in rec.get("ecNumbers", []) or []:
+            if ec.get("value"):
+                ec_numbers.append(ec.get("value"))
+    except Exception:
+        pass
+
+    functions = []
+    for c in item.get("comments", []) or []:
+        if c.get("commentType") == "FUNCTION":
+            for t in c.get("texts", []) or []:
+                if t.get("value"):
+                    functions.append(t.get("value"))
+
+    return {
+        "uniprot_id": accession or "Not available",
+        "protein_name_uniprot": protein_name or "Not available",
+        "ec_number_uniprot": "; ".join(ec_numbers) if ec_numbers else "Not available",
+        "protein_details_uniprot": " ".join(functions)[:1200] if functions else "Not available",
+        "uniprot_url": f"https://www.uniprot.org/uniprotkb/{accession}/entry" if accession else "Not available"
+    }
+
+def build_gene_protein_rows(metabolite, ann_row, enrich_uniprot=True):
+    rows = []
+
+    # 1. KEGG EC enzyme → UniProt
+    ec_numbers = split_semicolon(ann_row.get("kegg_enzyme", ""))
+    for ec in ec_numbers[:12]:
+        for uni in uniprot_by_ec(ec, max_results=4):
+            row = {
+                "metabolite": metabolite,
+                "gene_name": uni.get("gene_name", ""),
+                "protein_name": uni.get("protein_name", ""),
+                "uniprot_id": uni.get("uniprot_id", ""),
+                "ec_number": uni.get("ec_number", ""),
+                "protein_details": uni.get("protein_details", ""),
+                "associated_pathway_or_process": uni.get("associated_pathway_or_process", ""),
+                "association_source": uni.get("association_source", ""),
+                "association_confidence": uni.get("association_confidence", ""),
+                "uniprot_url": f"https://www.uniprot.org/uniprotkb/{uni.get('uniprot_id')}/entry" if not is_blank(uni.get("uniprot_id")) else "Not available"
+            }
+            rows.append(no_blank_dict(row))
+
+    # 2. Local associated gene/protein lists
+    local_genes = split_semicolon(ann_row.get("local_associated_genes", ""))
+    local_proteins = split_semicolon(ann_row.get("local_associated_proteins", ""))
+    for idx, gene in enumerate(local_genes):
+        protein = local_proteins[idx] if idx < len(local_proteins) else "Not available"
+        row = {
+            "metabolite": metabolite,
+            "gene_name": gene,
+            "protein_name": protein,
+            "uniprot_id": "Not available",
+            "ec_number": "Not available",
+            "protein_details": "Locally curated metabolite-associated gene/protein. Details can be enriched from UniProt when available.",
+            "associated_pathway_or_process": first_value(ann_row.get("best_pathway", ""), ann_row.get("best_superpathway", "")),
+            "association_source": "Local curated annotation table",
+            "association_confidence": "High if curated for the study; verify before publication",
+            "uniprot_url": "Not available"
+        }
+        if enrich_uniprot:
+            uni = uniprot_by_gene(gene)
+            if uni:
+                row["uniprot_id"] = first_value(uni.get("uniprot_id", ""), row["uniprot_id"])
+                row["protein_name"] = first_value(uni.get("protein_name_uniprot", ""), row["protein_name"])
+                row["ec_number"] = first_value(uni.get("ec_number_uniprot", ""), row["ec_number"])
+                row["protein_details"] = first_value(uni.get("protein_details_uniprot", ""), row["protein_details"])
+                row["uniprot_url"] = first_value(uni.get("uniprot_url", ""), row["uniprot_url"])
+        rows.append(no_blank_dict(row))
+
+    # 3. Rule-based fallback genes
+    fallback = fallback_genes_for_metabolite(metabolite, ann_row)
+    for fb in fallback:
+        gene = fb.get("gene_name", "")
+        row = {
+            "metabolite": metabolite,
+            "gene_name": gene,
+            "protein_name": fb.get("protein_name", ""),
+            "uniprot_id": "Not available",
+            "ec_number": "Not available",
+            "protein_details": fb.get("protein_details", ""),
+            "associated_pathway_or_process": fb.get("associated_pathway_or_process", ""),
+            "association_source": fb.get("association_source", ""),
+            "association_confidence": fb.get("association_confidence", ""),
+            "uniprot_url": "Not available"
+        }
+        if enrich_uniprot and gene != "Not specifically identified":
+            uni = uniprot_by_gene(gene)
+            if uni:
+                row["uniprot_id"] = first_value(uni.get("uniprot_id", ""), row["uniprot_id"])
+                row["protein_name"] = first_value(uni.get("protein_name_uniprot", ""), row["protein_name"])
+                row["ec_number"] = first_value(uni.get("ec_number_uniprot", ""), row["ec_number"])
+                row["protein_details"] = first_value(uni.get("protein_details_uniprot", ""), row["protein_details"])
+                row["uniprot_url"] = first_value(uni.get("uniprot_url", ""), row["uniprot_url"])
+        rows.append(no_blank_dict(row))
+
+    # Deduplicate by metabolite + gene + protein + source priority
+    if not rows:
+        rows = [{
+            "metabolite": metabolite,
+            "gene_name": "Not specifically identified",
+            "protein_name": "Not specifically identified",
+            "uniprot_id": "Not available",
+            "ec_number": "Not available",
+            "protein_details": "No confident gene/protein association was found. Treat as exogenous, xenobiotic, microbial, or unclassified until manually curated.",
+            "associated_pathway_or_process": first_value(ann_row.get("best_pathway", ""), "Unclassified metabolism"),
+            "association_source": "Fallback classification",
+            "association_confidence": "Low",
+            "uniprot_url": "Not available"
+        }]
+
+    df = pd.DataFrame(rows).fillna("Not available").replace("", "Not available")
+    if not df.empty:
+        df["dedup_key"] = df["metabolite"].astype(str) + "|" + df["gene_name"].astype(str) + "|" + df["protein_name"].astype(str)
+        df = df.drop_duplicates(subset=["dedup_key"]).drop(columns=["dedup_key"])
+    return df.to_dict(orient="records")
+
+# ============================================================
 # Literature search
-# -----------------------------
+# ============================================================
 @st.cache_data(show_spinner=False, ttl=43200)
 def pubmed_search(metabolite, topic, max_results=10, email="", api_key=""):
     query = f'("{metabolite}"[Title/Abstract] OR "{metabolite}"[MeSH Terms]) AND ("{topic}"[Title/Abstract] OR "{topic}"[MeSH Terms])'
@@ -645,7 +960,13 @@ def pubmed_search(metabolite, topic, max_results=10, email="", api_key=""):
     if not pmids:
         return []
 
-    fr, ferr = safe_get(f"{NCBI_EUTILS}/efetch.fcgi", params={"db": "pubmed", "id": ",".join(pmids), "retmode": "xml"})
+    fetch_params = {"db": "pubmed", "id": ",".join(pmids), "retmode": "xml"}
+    if email:
+        fetch_params["email"] = email
+    if api_key:
+        fetch_params["api_key"] = api_key
+
+    fr, ferr = safe_get(f"{NCBI_EUTILS}/efetch.fcgi", params=fetch_params)
     if fr is None:
         return [{"metabolite": metabolite, "source": "PubMed", "error": ferr}]
 
@@ -717,11 +1038,11 @@ def europe_pmc_search(metabolite, topic, max_results=10):
         })
     return rows
 
-# -----------------------------
+# ============================================================
 # UI
-# -----------------------------
-st.title("🧬 Metabolite Annotation v4")
-st.caption("No-blank output version: local database + PubChem + KEGG + ChEBI/OLS + ClassyFire + PubMed + Europe PMC")
+# ============================================================
+st.title("🧬 Metabolite Annotation v5")
+st.caption("No-blank output + gene/protein association tab")
 
 with st.sidebar:
     st.header("Settings")
@@ -734,6 +1055,10 @@ with st.sidebar:
     use_chebi = st.checkbox("Search ChEBI via EBI OLS", value=True)
     use_classyfire = st.checkbox("Search ClassyFire", value=True)
 
+    st.subheader("Gene/protein settings")
+    build_gene_tab = st.checkbox("Build gene/protein associations", value=True)
+    enrich_uniprot = st.checkbox("Enrich genes/proteins from UniProt", value=True)
+
     st.subheader("Literature sources")
     use_pubmed = st.checkbox("Search PubMed", value=True)
     use_epmc = st.checkbox("Search Europe PMC", value=True)
@@ -743,9 +1068,15 @@ with st.sidebar:
     ncbi_email = st.text_input("NCBI email, optional")
     ncbi_api_key = st.text_input("NCBI API key, optional", type="password")
 
-    show_all = st.checkbox("Show all technical columns", value=False)
+    show_all = st.checkbox("Show all technical annotation columns", value=False)
 
-tab1, tab2, tab3 = st.tabs(["Run app", "Local database", "Template"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "Run app",
+    "Gene/protein associations",
+    "Literature results",
+    "Local database",
+    "Template"
+])
 
 with tab1:
     col1, col2 = st.columns(2)
@@ -759,7 +1090,7 @@ with tab1:
     else:
         met_text = st.text_area("Metabolite list", placeholder="Cysteine\nArginine\nCarnitine")
 
-    if st.button("Run annotation and literature search", type="primary"):
+    if st.button("Run annotation, gene/protein and literature search", type="primary"):
         if not met_text.strip():
             st.error("Please enter at least one metabolite.")
             st.stop()
@@ -767,12 +1098,18 @@ with tab1:
         mets = split_metabolites(met_text)
         ann_rows = []
         lit_rows = []
+        gene_rows = []
+
         progress = st.progress(0)
         status = st.empty()
 
         for i, m in enumerate(mets):
             status.write(f"Processing: {m}")
-            ann_rows.append(annotate_one(m, local_db, use_pubchem, use_kegg, use_chebi, use_classyfire))
+            ann = annotate_one(m, local_db, use_pubchem, use_kegg, use_chebi, use_classyfire)
+            ann_rows.append(ann)
+
+            if build_gene_tab:
+                gene_rows.extend(build_gene_protein_rows(m, ann, enrich_uniprot=enrich_uniprot))
 
             if topic.strip():
                 if use_pubmed:
@@ -787,7 +1124,12 @@ with tab1:
         status.write("Completed.")
 
         ann_df = pd.DataFrame(ann_rows).fillna("Not available").replace("", "Not available")
+        gene_df = pd.DataFrame(gene_rows).fillna("Not available").replace("", "Not available") if gene_rows else pd.DataFrame()
         lit_df = pd.DataFrame(lit_rows).fillna("Not available").replace("", "Not available") if lit_rows else pd.DataFrame()
+
+        st.session_state["ann_df"] = ann_df
+        st.session_state["gene_df"] = gene_df
+        st.session_state["lit_df"] = lit_df
 
         priority_cols = [
             "input_metabolite",
@@ -818,54 +1160,94 @@ with tab1:
         st.download_button(
             "Download full annotation CSV",
             data=ann_df.to_csv(index=False).encode("utf-8"),
-            file_name="integrated_metabolite_annotation_v4_no_blank.csv",
+            file_name="integrated_metabolite_annotation_v5.csv",
             mime="text/csv"
         )
 
-        st.subheader("2. Literature results")
-        if topic.strip():
-            if lit_df.empty:
-                st.info("No literature results found.")
-            else:
-                st.dataframe(lit_df, use_container_width=True)
-                st.download_button(
-                    "Download literature CSV",
-                    data=lit_df.to_csv(index=False).encode("utf-8"),
-                    file_name="metabolite_literature_results.csv",
-                    mime="text/csv"
-                )
+        if build_gene_tab:
+            st.success("Gene/protein associations were created. Open the Gene/protein associations tab.")
 
-                st.subheader("3. Paper cards")
-                for _, row in lit_df.head(20).iterrows():
-                    if str(row.get("error", "")).strip() not in ["", "Not available", "nan"]:
-                        st.error(row.get("error"))
-                        continue
-                    st.markdown(f"**{row.get('Title', 'Not available')}**")
-                    st.write(f"{row.get('source', 'Not available')} | {row.get('Journal', 'Not available')} | {row.get('Year', 'Not available')}")
-                    if row.get("URL", "Not available") != "Not available":
-                        st.markdown(f"[Open record]({row.get('URL')})")
-                    if row.get("Abstract", "Not available") != "Not available":
-                        abstract = str(row.get("Abstract", ""))
-                        st.write(abstract[:1200] + ("..." if len(abstract) > 1200 else ""))
-                    st.divider()
+        if topic.strip():
+            st.success("Literature results were created. Open the Literature results tab.")
         else:
             st.info("No relation topic entered, so literature search was skipped.")
 
 with tab2:
+    st.subheader("Gene/protein associations")
+    st.markdown(
+        """
+This tab links metabolites to genes/proteins using KEGG enzyme numbers, UniProt human protein records,
+local curated annotations and rule-based fallback associations. Key fields are not left blank.
+"""
+    )
+
+    gene_df = st.session_state.get("gene_df", pd.DataFrame())
+    if gene_df.empty:
+        st.info("Run the app first with 'Build gene/protein associations' enabled.")
+    else:
+        st.dataframe(gene_df, use_container_width=True)
+        st.download_button(
+            "Download gene/protein associations CSV",
+            data=gene_df.to_csv(index=False).encode("utf-8"),
+            file_name="metabolite_gene_protein_associations_v5.csv",
+            mime="text/csv"
+        )
+
+        st.subheader("Gene/protein detail cards")
+        for _, row in gene_df.head(50).iterrows():
+            st.markdown(f"**{row.get('gene_name', 'Not available')} — {row.get('protein_name', 'Not available')}**")
+            st.write(f"Metabolite: {row.get('metabolite', 'Not available')}")
+            st.write(f"UniProt: {row.get('uniprot_id', 'Not available')} | EC: {row.get('ec_number', 'Not available')}")
+            st.write(f"Process/pathway: {row.get('associated_pathway_or_process', 'Not available')}")
+            st.write(f"Details: {row.get('protein_details', 'Not available')}")
+            st.caption(f"Source: {row.get('association_source', 'Not available')} | Confidence: {row.get('association_confidence', 'Not available')}")
+            if row.get("uniprot_url", "Not available") != "Not available":
+                st.markdown(f"[Open UniProt record]({row.get('uniprot_url')})")
+            st.divider()
+
+with tab3:
+    st.subheader("Literature results")
+    lit_df = st.session_state.get("lit_df", pd.DataFrame())
+    if lit_df.empty:
+        st.info("No literature results available. Run the app with a relation topic.")
+    else:
+        st.dataframe(lit_df, use_container_width=True)
+        st.download_button(
+            "Download literature CSV",
+            data=lit_df.to_csv(index=False).encode("utf-8"),
+            file_name="metabolite_literature_results_v5.csv",
+            mime="text/csv"
+        )
+
+        st.subheader("Paper cards")
+        for _, row in lit_df.head(50).iterrows():
+            if str(row.get("error", "")).strip() not in ["", "Not available", "nan"]:
+                st.error(row.get("error"))
+                continue
+            st.markdown(f"**{row.get('Title', 'Not available')}**")
+            st.write(f"{row.get('source', 'Not available')} | {row.get('Journal', 'Not available')} | {row.get('Year', 'Not available')}")
+            if row.get("URL", "Not available") != "Not available":
+                st.markdown(f"[Open record]({row.get('URL')})")
+            if row.get("Abstract", "Not available") != "Not available":
+                abstract = str(row.get("Abstract", ""))
+                st.write(abstract[:1200] + ("..." if len(abstract) > 1200 else ""))
+            st.divider()
+
+with tab4:
     st.subheader("Current local curated database")
     st.dataframe(local_db, use_container_width=True)
 
-with tab3:
+with tab5:
     template = pd.DataFrame(columns=[
         "metabolite", "synonyms", "compound_class", "pathway", "superpathway",
         "physiological_compartment", "hmdb_id", "kegg_id", "pubchem_cid",
-        "inchikey", "notes"
+        "inchikey", "notes", "associated_genes", "associated_proteins"
     ])
     st.subheader("Annotation CSV template")
     st.dataframe(template, use_container_width=True)
     st.download_button(
         "Download template CSV",
         data=template.to_csv(index=False).encode("utf-8"),
-        file_name="metabolite_annotation_template.csv",
+        file_name="metabolite_annotation_template_v5.csv",
         mime="text/csv"
     )
